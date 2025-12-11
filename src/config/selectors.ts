@@ -1,0 +1,16 @@
+export const SELECTORS = {
+    LOGIN_URL: 'https://www.linkedin.com/login',
+    PROFILE_URL: 'https://www.linkedin.com/in/me/',
+    USERNAME_FIELD: 'input#username',
+    PASSWORD_FIELD: 'input#password',
+    SIGN_IN_BUTTON: 'button[data-litms-control-urn="login-submit"]',
+    PROFILE_CARD: 'div.profile-card-member-details',
+    CREATE_A_POST: 'a[href*="/create-post"]',
+    POST_TEXTAREA: 'div[aria-placeholder="What do you want to talk about?"]',
+    SCHEDULE_BUTTON: 'button[aria-label="Schedule post"]',
+    SHARE_POST_SCHEDULE_DATE: 'input#share-post__scheduled-date',
+    SHARE_POST_SCHEDULE_TIME: 'input#share-post__scheduled-time',
+    POST_BUTTON: 'button:not([disabled]) span.artdeco-button__text',
+    SUCCESS_TOAST: 'p.artdeco-toast-item__message',
+    FAILURE_TOAST: 'span.artdeco-inline-feedback__message',
+};

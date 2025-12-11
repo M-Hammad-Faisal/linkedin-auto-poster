@@ -1,0 +1,4 @@
+This is the content for my automated post! 🤖
+It will be loaded and published directly to LinkedIn.
+
+#Automation #TypeScript #Playwright
