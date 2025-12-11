@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv';
-import {LinkedInPoster} from './linkedInPoster.js';
-import {IPostConfig} from './config/types.js';
-import {loadPostContent} from './utils/file.js';
+import { LinkedInPoster } from './linkedInPoster.js';
+import { IPostConfig } from './config/types.js';
+import { loadPostContent } from './utils/file.js';
 
 dotenv.config();
 

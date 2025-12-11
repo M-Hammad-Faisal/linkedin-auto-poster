@@ -1,10 +1,10 @@
-import {chromium} from 'playwright-extra';
-import {Browser, Locator, Page} from 'playwright/test';
+import { chromium } from 'playwright-extra';
+import { Browser, Locator, Page } from 'playwright/test';
 import stealth from 'puppeteer-extra-plugin-stealth';
-import {SELECTORS} from './config/selectors.js';
-import {IPostConfig} from './config/types.js';
-import {validateAndAdjustSchedule} from './utils/time.js';
-import {SecondsInMilliseconds} from "./config/timeouts.js";
+import { SELECTORS } from './config/selectors.js';
+import { IPostConfig } from './config/types.js';
+import { validateAndAdjustSchedule } from './utils/time.js';
+import { SecondsInMilliseconds } from './config/timeouts.js';
 
 chromium.use(stealth());
 
@@ -36,7 +36,7 @@ export class LinkedInPoster {
             await this.executePost(postButton);
         } catch (error) {
             console.error('❌ An error occurred during the automation process:', error);
-            await this.page.screenshot({path: 'error_screenshot.png'});
+            await this.page.screenshot({ path: 'error_screenshot.png' });
         } finally {
             await this.browser.close();
             console.log('Browser closed. Script finished.');
@@ -65,7 +65,7 @@ export class LinkedInPoster {
      */
     private async login(): Promise<void> {
         console.log('Navigating to login page...');
-        await this.page.goto(SELECTORS.LOGIN_URL, {waitUntil: 'domcontentloaded'});
+        await this.page.goto(SELECTORS.LOGIN_URL, { waitUntil: 'domcontentloaded' });
 
         console.log('Entering credentials...');
         await this.page.locator(SELECTORS.USERNAME_FIELD).fill(this.config.username);
@@ -73,7 +73,7 @@ export class LinkedInPoster {
 
         await this.page.locator(SELECTORS.SIGN_IN_BUTTON).click();
 
-        await this.page.waitForSelector(SELECTORS.PROFILE_CARD, {state: 'visible'});
+        await this.page.waitForSelector(SELECTORS.PROFILE_CARD, { state: 'visible' });
         console.log('Login successful! Navigated to homepage.');
     }
 
@@ -83,12 +83,12 @@ export class LinkedInPoster {
      */
     private async openPostModal(): Promise<void> {
         console.log('Navigating to profile page...');
-        await this.page.goto(SELECTORS.PROFILE_URL, {waitUntil: 'domcontentloaded'});
+        await this.page.goto(SELECTORS.PROFILE_URL, { waitUntil: 'domcontentloaded' });
 
         console.log('Clicking "Start a post" button...');
         await this.page.locator(SELECTORS.CREATE_A_POST).click();
 
-        await this.page.waitForSelector(SELECTORS.POST_TEXTAREA, {state: 'visible'});
+        await this.page.waitForSelector(SELECTORS.POST_TEXTAREA, { state: 'visible' });
         console.log('Post modal opened.');
 
         console.log('Typing post content...');
@@ -105,15 +105,15 @@ export class LinkedInPoster {
     private async handleScheduling(): Promise<Locator> {
         if (!this.config.schedulePost) {
             console.log('Ready to publish post immediately.');
-            return this.page.locator(SELECTORS.POST_BUTTON).filter({hasText: 'Post'}).first();
+            return this.page.locator(SELECTORS.POST_BUTTON).filter({ hasText: 'Post' }).first();
         }
 
         console.log('Scheduling post is enabled. Opening schedule settings...');
         await this.page.locator(SELECTORS.SCHEDULE_BUTTON).click();
 
-        await this.page.waitForSelector(SELECTORS.SHARE_POST_SCHEDULE_DATE, {state: 'visible'});
+        await this.page.waitForSelector(SELECTORS.SHARE_POST_SCHEDULE_DATE, { state: 'visible' });
 
-        const {finalDate, finalTimeStr} = validateAndAdjustSchedule(
+        const { finalDate, finalTimeStr } = validateAndAdjustSchedule(
             this.config.scheduleDateEnv,
             this.config.scheduleTimeEnv
         );
@@ -132,10 +132,10 @@ export class LinkedInPoster {
         await scheduleTimeLocator.fill(finalTimeStr);
         await this.page.keyboard.press('Tab');
 
-        await this.page.locator(SELECTORS.POST_BUTTON).filter({hasText: 'Next'}).first().click();
+        await this.page.locator(SELECTORS.POST_BUTTON).filter({ hasText: 'Next' }).first().click();
 
         console.log(`Ready to schedule post for ${formattedDate} at ${finalTimeStr}.`);
-        return this.page.locator(SELECTORS.POST_BUTTON).filter({hasText: 'Schedule'}).first();
+        return this.page.locator(SELECTORS.POST_BUTTON).filter({ hasText: 'Schedule' }).first();
     }
 
     /**
@@ -151,7 +151,7 @@ export class LinkedInPoster {
         while (attempts < maxAttempts) {
             console.log(`Attempting final submission (Attempt ${attempts + 1}/${maxAttempts})...`);
 
-            await postButton.waitFor({state: 'visible', timeout: SecondsInMilliseconds.Five});
+            await postButton.waitFor({ state: 'visible', timeout: SecondsInMilliseconds.Five });
             await postButton.click();
 
             const toastAppeared = await Promise.race([
@@ -163,7 +163,9 @@ export class LinkedInPoster {
                     state: 'visible',
                     timeout: SecondsInMilliseconds.Ten,
                 }),
-                new Promise((resolve) => setTimeout(() => resolve('timeout'), SecondsInMilliseconds.Fifteen)),
+                new Promise((resolve) =>
+                    setTimeout(() => resolve('timeout'), SecondsInMilliseconds.Fifteen)
+                ),
             ]);
 
             if (toastAppeared === 'timeout') {
