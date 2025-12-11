@@ -1,3 +1,5 @@
+// postToLinkedIn.js
+
 require('dotenv').config();
 const {chromium} = require('playwright-extra');
 const stealth = require('puppeteer-extra-plugin-stealth')();
@@ -27,6 +29,8 @@ const SELECTORS = {
     SHARE_POST_SCHEDULE_DATE: 'input#share-post__scheduled-date',
     SHARE_POST_SCHEDULE_TIME: 'input#share-post__scheduled-time',
     POST_BUTTON: 'button:not([disabled]) span.artdeco-button__text',
+    SUCCESS_TOAST: 'p.artdeco-toast-item__message',
+    FAILURE_TOAST: 'span.artdeco-inline-feedback__message',
 };
 
 // Regex for validating schedule time format (HH:MM AM/PM)
@@ -93,42 +97,77 @@ async function createLinkedInPost() {
             await page.waitForSelector(SELECTORS.SHARE_POST_SCHEDULE_DATE, {state: "visible"})
 
             const currentDate = new Date();
-            const currentTime = currentDate.getTime();
-
             const givenDate = new Date(process.env.SCHEDULE_DATE);
-            const givenTime = givenDate.getTime();
+            const givenTimeStr = process.env.SCHEDULE_TIME;
 
-            let formattedDate;
-            // Check if date is valid AND in the future
-            if (!isNaN(givenTime) && givenTime > currentTime) {
-                formattedDate = new Intl.DateTimeFormat("en-US", {
-                    year: "numeric", month: "2-digit", day: "2-digit"
-                }).format(givenDate);
-            } else {
-                // Default to tomorrow
+            let finalDate = givenDate;
+            let finalTimeStr = givenTimeStr;
+
+            // --- DATE VALIDATION ---
+            // If the given date is invalid OR is in the past, default to tomorrow.
+            if (isNaN(givenDate.getTime()) || givenDate.getTime() < currentDate.setHours(0, 0, 0, 0)) {
                 const tomorrow = new Date();
                 tomorrow.setDate(currentDate.getDate() + 1);
-
-                formattedDate = new Intl.DateTimeFormat("en-US", {
-                    year: "numeric", month: "2-digit", day: "2-digit"
-                }).format(tomorrow);
+                finalDate = tomorrow;
                 console.log('⚠️ Provided schedule date is invalid or in the past. Scheduling for tomorrow.');
             }
+
+            // --- TIME VALIDATION ---
+            if (!givenTimeStr || !TIME_REGEX.exec(givenTimeStr)?.[0]) {
+                finalTimeStr = "10:00 AM"; // Default time if invalid format
+                console.log('⚠️ Provided schedule time is invalid format. Using default time (10:00 AM).');
+            }
+
+            // --- FUTURE TIME CHECK (Most Important Refinement) ---
+            // Check if the final date is today
+            const isToday = finalDate.toDateString() === currentDate.toDateString();
+
+            if (isToday) {
+                // Combine date and time to check if the combined timestamp is in the past
+                const [timePart, meridiem] = finalTimeStr.split(' ');
+                let [hours, minutes] = timePart.split(':').map(Number);
+
+                // Convert 12-hour time to 24-hour time
+                if (meridiem === 'PM' && hours !== 12) {
+                    hours += 12;
+                } else if (meridiem === 'AM' && hours === 12) {
+                    hours = 0; // 12 AM is midnight (0 hours)
+                }
+
+                const scheduledDateTime = new Date(finalDate.getFullYear(), finalDate.getMonth(), finalDate.getDate(), hours, minutes, 0, 0);
+
+                // Add a buffer (e.g., 5 minutes) to the current time for safety
+                const fiveMinutesFromNow = new Date(currentDate.getTime() + 5 * 60000);
+
+                if (scheduledDateTime.getTime() < fiveMinutesFromNow.getTime()) {
+                    // Time has passed today, so set the schedule to 5 minutes from now.
+                    finalDate = fiveMinutesFromNow;
+                    // Format the new time back into HH:MM AM/PM
+                    const newHours = fiveMinutesFromNow.getHours();
+                    const newMinutes = fiveMinutesFromNow.getMinutes().toString().padStart(2, '0');
+                    const newMeridiem = newHours >= 12 ? 'PM' : 'AM';
+                    const displayHours = (newHours % 12) || 12;
+
+                    finalTimeStr = `${displayHours.toString().padStart(2, '0')}:${newMinutes} ${newMeridiem}`;
+                    console.log(`⚠️ Scheduled time is in the past TODAY. Resetting time to 5 minutes from now: ${finalTimeStr}`);
+                }
+            }
+
+
+            // --- Apply Final Date and Time ---
+
+            // Re-format the date based on the final determined date
+            const formattedDate = new Intl.DateTimeFormat("en-US", {
+                year: "numeric", month: "2-digit", day: "2-digit"
+            }).format(finalDate);
+
 
             const scheduleDate = page.locator(SELECTORS.SHARE_POST_SCHEDULE_DATE)
             await scheduleDate.fill(formattedDate);
             await page.keyboard.press("Tab") // Move focus to the time field
 
-            let time = "10:00 AM"; // Default time
-            // Use provided time if it matches the regex
-            if (process.env.SCHEDULE_TIME && TIME_REGEX.exec(process.env.SCHEDULE_TIME)?.[0]) {
-                time = process.env.SCHEDULE_TIME;
-            } else {
-                console.log('⚠️ Provided schedule time is invalid. Using default time (10:00 AM).');
-            }
-
             const scheduleTime = page.locator(SELECTORS.SHARE_POST_SCHEDULE_TIME)
-            await scheduleTime.fill(time);
+            await scheduleTime.fill(finalTimeStr);
             await page.keyboard.press("Tab") // Move focus away
 
             // Click "Next" to confirm date/time
@@ -136,7 +175,7 @@ async function createLinkedInPost() {
 
             // Final button is now "Schedule"
             postButton = page.locator(SELECTORS.POST_BUTTON).filter({hasText: "Schedule"}).first();
-            console.log(`Ready to schedule post for ${formattedDate} at ${time}.`);
+            console.log(`Ready to schedule post for ${formattedDate} at ${finalTimeStr}.`);
 
         } else {
             // Final button is "Post" for immediate publishing
@@ -144,14 +183,44 @@ async function createLinkedInPost() {
             console.log('Ready to publish post immediately.');
         }
 
-        // 6. Execute Final Action
-        await postButton.waitFor({state: "visible"});
-        await postButton.click();
+        // 6. Execute Final Action with Retry
+        let attempts = 0;
+        const maxAttempts = 3;
+        let postSuccessful = false;
 
-        // Wait for the post to be submitted and modal to close
-        await page.waitForTimeout(5000)
+        while (attempts < maxAttempts) {
+            console.log(`Attempting final submission (Attempt ${attempts + 1}/${maxAttempts})...`);
 
-        console.log('✅ Action completed successfully (Posted or Scheduled)!');
+            await postButton.waitFor({state: "visible", timeout: 5000});
+            await postButton.click();
+
+            // Wait for either the success or failure toast to appear.
+            // Promise.race returns the first promise that settles.
+            const toastAppeared = await Promise.race([
+                page.waitForSelector(SELECTORS.SUCCESS_TOAST, {state: 'visible', timeout: 10000}),
+                page.waitForSelector(SELECTORS.FAILURE_TOAST, {state: 'visible', timeout: 10000}),
+                // Optional: Add a timeout to catch cases where neither toast appears
+                new Promise(resolve => setTimeout(() => resolve('timeout'), 15000))
+            ]);
+
+            if (toastAppeared === 'timeout') {
+                console.log('Post submission timed out. Retrying...');
+            } else if (await page.locator(SELECTORS.SUCCESS_TOAST).isVisible()) {
+                postSuccessful = true;
+                break; // Success! Exit the loop.
+            } else {
+                // If it wasn't the success toast, it was the failure toast (or another error).
+                console.log('Submission failed. Waiting 2s before retrying...');
+                await page.waitForTimeout(2000); // Wait before next attempt
+            }
+            attempts += 1;
+        }
+
+        if (postSuccessful) {
+            console.log('✅ Action completed successfully (Posted or Scheduled)!');
+        } else {
+            throw new Error(`Post failed after ${maxAttempts} attempts. Check screenshot for details.`);
+        }
     } catch (error) {
         console.error('❌ An error occurred during the automation process:', error);
         await page.screenshot({path: 'error_screenshot.png'});
